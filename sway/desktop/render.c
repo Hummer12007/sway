@@ -32,6 +32,8 @@ struct render_data {
 	float alpha;
 };
 
+static struct sway_container *fullscreen_con;
+
 /**
  * Apply scale to a width or height.
  *
@@ -281,7 +283,8 @@ static void render_view(struct sway_output *output, pixman_region32_t *damage,
 		render_view_toplevels(view, output, damage, view->container->alpha);
 	}
 
-	if (con->current.border == B_NONE || con->current.border == B_CSD) {
+	if (con->current.border == B_NONE || con->current.border == B_CSD ||
+		con->fullscreen_mode != FULLSCREEN_NONE) {
 		return;
 	}
 
@@ -675,6 +678,10 @@ static void render_containers_linear(struct sway_output *output,
 	for (int i = 0; i < parent->children->length; ++i) {
 		struct sway_container *child = parent->children->items[i];
 
+		if (child == fullscreen_con) {
+			continue;
+		}
+
 		if (child->view) {
 			struct sway_view *view = child->view;
 			struct border_colors *colors;
@@ -771,6 +778,9 @@ static void render_containers_tabbed(struct sway_output *output,
 		}
 	}
 
+	if (current == fullscreen_con)
+		return;
+
 	// Render surface and left/right/bottom borders
 	if (current->view) {
 		render_view(output, damage, current, current_colors);
@@ -830,6 +840,9 @@ static void render_containers_stacked(struct sway_output *output,
 		}
 	}
 
+	if (current == fullscreen_con)
+		return;
+
 	// Render surface and left/right/bottom borders
 	if (current->view) {
 		render_view(output, damage, current, current_colors);
@@ -878,6 +891,9 @@ static void render_container(struct sway_output *output,
 		.focused = focused,
 		.active_child = con->current.focused_inactive_child,
 	};
+	if (con == fullscreen_con) {
+		return;
+	}
 	render_containers(output, damage, &data);
 }
 
@@ -996,66 +1012,46 @@ void output_render(struct sway_output *output, struct timespec *when,
 		goto render_overlay;
 	}
 
-	struct sway_container *fullscreen_con = root->fullscreen_global;
+	fullscreen_con = root->fullscreen_global;
 	if (!fullscreen_con) {
 		fullscreen_con = workspace->current.fullscreen;
 	}
 
-	if (fullscreen_con) {
-		float clear_color[] = {0.0f, 0.0f, 0.0f, 1.0f};
+	float clear_color[] = {0.25f, 0.25f, 0.25f, 1.0f};
 
-		int nrects;
-		pixman_box32_t *rects = pixman_region32_rectangles(damage, &nrects);
-		for (int i = 0; i < nrects; ++i) {
-			scissor_output(wlr_output, &rects[i]);
-			wlr_renderer_clear(renderer, clear_color);
-		}
-
-		if (fullscreen_con->view) {
-			if (fullscreen_con->view->saved_buffer) {
-				render_saved_view(fullscreen_con->view, output, damage, 1.0f);
-			} else if (fullscreen_con->view->surface) {
-				render_view_toplevels(fullscreen_con->view,
-						output, damage, 1.0f);
-			}
-		} else {
-			render_container(output, damage, fullscreen_con,
-					fullscreen_con->current.focused);
-		}
-
-		for (int i = 0; i < workspace->current.floating->length; ++i) {
-			struct sway_container *floater =
-				workspace->current.floating->items[i];
-			if (container_is_transient_for(floater, fullscreen_con)) {
-				render_floating_container(output, damage, floater);
-			}
-		}
-#if HAVE_XWAYLAND
-		render_unmanaged(output, damage, &root->xwayland_unmanaged);
-#endif
-	} else {
-		float clear_color[] = {0.25f, 0.25f, 0.25f, 1.0f};
-
-		int nrects;
-		pixman_box32_t *rects = pixman_region32_rectangles(damage, &nrects);
-		for (int i = 0; i < nrects; ++i) {
-			scissor_output(wlr_output, &rects[i]);
-			wlr_renderer_clear(renderer, clear_color);
-		}
-
-		render_layer(output, damage,
-			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND]);
-		render_layer(output, damage,
-			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM]);
-
-		render_workspace(output, damage, workspace, workspace->current.focused);
-		render_floating(output, damage);
-#if HAVE_XWAYLAND
-		render_unmanaged(output, damage, &root->xwayland_unmanaged);
-#endif
-		render_layer(output, damage,
-			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_TOP]);
+	int nrects;
+	pixman_box32_t *rects = pixman_region32_rectangles(damage, &nrects);
+	for (int i = 0; i < nrects; ++i) {
+		scissor_output(wlr_output, &rects[i]);
+		wlr_renderer_clear(renderer, clear_color);
 	}
+
+	render_layer(output, damage,
+		&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND]);
+	render_layer(output, damage,
+		&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM]);
+
+	render_workspace(output, damage, workspace, workspace->current.focused);
+
+	struct sway_container *fs_con = fullscreen_con;
+	fullscreen_con = NULL;
+	if (fs_con) {
+		if (fs_con->view) {
+			render_view(output, damage, fs_con, NULL);
+		} else {
+			render_container(output, damage, fs_con,
+				fs_con->current.focused);
+		}
+	}
+
+	render_floating(output, damage);
+
+
+#if HAVE_XWAYLAND
+	render_unmanaged(output, damage, &root->xwayland_unmanaged);
+#endif
+	render_layer(output, damage,
+		&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_TOP]);
 
 	render_seatops(output, damage);
 
