@@ -251,51 +251,25 @@ static void output_for_each_surface(struct sway_output *output,
 	};
 
 	struct sway_workspace *workspace = output_get_active_workspace(output);
-	struct sway_container *fullscreen_con = root->fullscreen_global;
-	if (!fullscreen_con) {
-		if (!workspace) {
-			return;
-		}
-		fullscreen_con = workspace->current.fullscreen;
-	}
-	if (fullscreen_con) {
-		for_each_surface_container_iterator(fullscreen_con, &data);
-		container_for_each_child(fullscreen_con,
-			for_each_surface_container_iterator, &data);
 
-		// TODO: Show transient containers for fullscreen global
-		if (fullscreen_con == workspace->current.fullscreen) {
-			for (int i = 0; i < workspace->current.floating->length; ++i) {
-				struct sway_container *floater =
-					workspace->current.floating->items[i];
-				if (container_is_transient_for(floater, fullscreen_con)) {
-					for_each_surface_container_iterator(floater, &data);
-				}
-			}
-		}
-#if HAVE_XWAYLAND
-		output_unmanaged_for_each_surface(output, &root->xwayland_unmanaged,
-			iterator, user_data);
-#endif
-	} else {
-		output_layer_for_each_surface(output,
-			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND],
-			iterator, user_data);
-		output_layer_for_each_surface(output,
-			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM],
-			iterator, user_data);
+	output_layer_for_each_surface(output,
+		&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND],
+		iterator, user_data);
+	output_layer_for_each_surface(output,
+		&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM],
+		iterator, user_data);
 
+	if (workspace)
 		workspace_for_each_container(workspace,
 			for_each_surface_container_iterator, &data);
 
 #if HAVE_XWAYLAND
-		output_unmanaged_for_each_surface(output, &root->xwayland_unmanaged,
-			iterator, user_data);
+	output_unmanaged_for_each_surface(output, &root->xwayland_unmanaged,
+		iterator, user_data);
 #endif
-		output_layer_for_each_surface(output,
-			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_TOP],
-			iterator, user_data);
-	}
+	output_layer_for_each_surface(output,
+		&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_TOP],
+		iterator, user_data);
 
 overlay:
 	output_layer_for_each_surface(output,
