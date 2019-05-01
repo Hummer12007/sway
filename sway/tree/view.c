@@ -1078,12 +1078,12 @@ bool view_is_visible(struct sway_view *view) {
 		con = con->parent;
 	}
 	// Check view isn't hidden by another fullscreen view
-	struct sway_container *fs = root->fullscreen_global ?
+	/*struct sway_container *fs = root->fullscreen_global ?
 		root->fullscreen_global : workspace->fullscreen;
 	if (fs && !container_is_fullscreen_or_child(view->container) &&
 			!container_is_transient_for(view->container, fs)) {
 		return false;
-	}
+	}*/
 	return true;
 }
 
